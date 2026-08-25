@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: restaurant
+    description: Restaurant menu and operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,142 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /menu:
+    get:
+      operationId: getMenu
+      tags: [restaurant]
+      summary: Get the active restaurant menu
+      responses:
+        "200":
+          description: Menu categories and items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategory"
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [restaurant]
+      summary: List recent orders
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [restaurant]
+      summary: Place a guest order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /orders/{id}/status:
+    patch:
+      operationId: updateOrderStatus
+      tags: [restaurant]
+      summary: Update order status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderStatusUpdate"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /calls:
+    get:
+      operationId: listCalls
+      tags: [restaurant]
+      summary: List waiter calls
+      responses:
+        "200":
+          description: Waiter calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WaiterCall"
+    post:
+      operationId: createCall
+      tags: [restaurant]
+      summary: Request waiter service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallInput"
+      responses:
+        "201":
+          description: Created call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaiterCall"
+  /calls/{id}/status:
+    patch:
+      operationId: updateCallStatus
+      tags: [restaurant]
+      summary: Update waiter call status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallStatusUpdate"
+      responses:
+        "200":
+          description: Updated call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaiterCall"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [restaurant]
+      summary: Get live operations summary
+      responses:
+        "200":
+          description: Operations summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +171,89 @@ components:
           type: string
       required:
         - status
+    MenuItem:
+      type: object
+      required: [id, name, description, price, isVeg, isAvailable, emoji]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        isVeg: { type: boolean }
+        isAvailable: { type: boolean }
+        emoji: { type: string }
+    MenuCategory:
+      type: object
+      required: [id, name, items]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MenuItem" }
+    OrderItem:
+      type: object
+      required: [id, name, price, quantity, instructions, isVeg]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        price: { type: number }
+        quantity: { type: number }
+        instructions: { type: string }
+        isVeg: { type: boolean }
+    Order:
+      type: object
+      required: [id, tableNumber, status, items, total, createdAt, estimatedMinutes]
+      properties:
+        id: { type: string }
+        tableNumber: { type: number }
+        status: { type: string, enum: [placed, preparing, ready, served, completed, cancelled] }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        total: { type: number }
+        createdAt: { type: string }
+        estimatedMinutes: { type: number }
+    OrderInput:
+      type: object
+      required: [tableNumber, items]
+      properties:
+        tableNumber: { type: number }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+    OrderStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [placed, preparing, ready, served, completed, cancelled] }
+        estimatedMinutes: { type: number }
+    WaiterCall:
+      type: object
+      required: [id, tableNumber, type, status, createdAt]
+      properties:
+        id: { type: string }
+        tableNumber: { type: number }
+        type: { type: string, enum: [waiter, water, bill] }
+        status: { type: string, enum: [pending, claimed, resolved] }
+        createdAt: { type: string }
+    CallInput:
+      type: object
+      required: [tableNumber, type]
+      properties:
+        tableNumber: { type: number }
+        type: { type: string, enum: [waiter, water, bill] }
+    CallStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending, claimed, resolved] }
+    DashboardSummary:
+      type: object
+      required: [activeOrders, pendingCalls, freeWaiters, busyWaiters]
+      properties:
+        activeOrders: { type: number }
+        pendingCalls: { type: number }
+        freeWaiters: { type: number }
+        busyWaiters: { type: number }
 

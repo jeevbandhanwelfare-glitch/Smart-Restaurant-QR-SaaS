@@ -1,6 +1,6 @@
-# [Project name]
+# Smart Restaurant QR Menu
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Guest QR ordering and live restaurant operations for diners, kitchen staff, waiters, and administrators.
 
 ## Run & Operate
 
@@ -22,15 +22,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/smart-restaurant-qr` — customer menu and role-based operations UI
+- `artifacts/api-server/src/routes/restaurant.ts` — menu, order, waiter-call, and summary API
+- `supabase/schema.sql` — Supabase schema, trigger, RLS policies, realtime publication, and seed data
+- `lib/api-spec/openapi.yaml` — API contract source of truth
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The root route is always the customer menu; table context comes from `?table=` and defaults to Demo Mode table 1.
+- Public signup is customer-only; staff roles are assigned by an admin.
+- The API keeps a small in-memory preview store so the app is usable before Supabase credentials are configured; production persistence is defined in `supabase/schema.sql`.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Guests browse a categorized menu, customize items, place orders, track progress, and call for waiter service. Kitchen staff manage ticket status, waiters claim and resolve table calls, and admins oversee menu, tables, staff, and orders.
 
 ## User preferences
 

@@ -1,0 +1,1 @@
+- [OpenAPI/Zod compatibility](openapi-zod-compat.md) — generated integer schemas need a workspace-compatible numeric representation.

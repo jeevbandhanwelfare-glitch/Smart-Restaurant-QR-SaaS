@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Smart Restaurant QR Menu"
+description = "A mobile-first restaurant QR menu and operations app with guest ordering, live order tracking, kitchen display, waiter calls, and role-based staff management."
+version = "1.0.0"
+id = "artifacts/smart-restaurant-qr"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22030
+
+[services.development]
+run = "pnpm --filter @workspace/smart-restaurant-qr run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smart-restaurant-qr", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smart-restaurant-qr/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22030"
+BASE_PATH = "/"
