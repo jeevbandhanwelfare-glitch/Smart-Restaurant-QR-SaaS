@@ -1,0 +1,107 @@
+Act as an expert Full-Stack Next.js Developer. Build a complete, production-ready "Smart Restaurant QR Menu & Operations SaaS" as a SINGLE unified web app with role-based authentication.
+
+============================================================
+CRITICAL ROUTING BEHAVIOR — READ THIS FIRST
+============================================================
+- The ROOT URL "/" must directly render the CUSTOMER MENU ITSELF (the actual browsing/ordering screen with categories, dishes, cart) — NOT a landing page, NOT a card-based role picker, NOT a login screen. A guest scanning the table QR code must land on a working menu with zero clicks.
+- "/" reads the ?table= query param the same way "/menu?table=5" would. If no ?table= is present (someone opens the bare domain), default gracefully to table 1 and show a small "Demo Mode" badge — never block or redirect the page because of a missing table param.
+- Do NOT build any "choose your role" landing page with cards for Guest/Kitchen/Waiter. That entire pattern is explicitly rejected — the customer menu IS the homepage.
+- On the customer page, add ONLY two small, low-emphasis navigation links (never big buttons, never competing visually with the menu):
+  - Top-right corner: small "Sign in" text link (optional — only needed if a customer wants to see their order history)
+  - Footer: small "Staff Login" link → goes to /login
+- /login is the single shared login form for admin, kitchen, and waiter accounts (email + password via Supabase Auth), with a secondary/smaller option for a customer to sign in or create an account. After successful login, redirect by role read from `profiles`:
+  - admin → /admin
+  - kitchen → /kitchen
+  - waiter → /waiter
+  - customer → back to "/" (preserving any ?table= they had)
+- A logged-in staff member who navigates to "/" still just sees the customer menu (staff are also diners) — but their account menu (small, top-right) shows their name + a shortcut back to their own dashboard + Log out.
+- Public self-signup (via the optional "Sign in" link) always creates role="customer". No public signup can ever grant itself admin, kitchen, or waiter — those roles are only ever assigned by an existing admin via the Admin > Add Staff screen.
+
+============================================================
+TECH STACK (use exactly this)
+============================================================
+- Framework: Next.js 14 (App Router) + TypeScript
+- Styling: Tailwind CSS
+- Database + Auth + Real-time: Supabase (Postgres + Supabase Auth + Supabase Realtime via postgres_changes)
+- Deployment target: Vercel — package.json, app/, components/, lib/ must ALL be at the project root, no nested subfolder (this breaks Vercel's build detection)
+
+============================================================
+AUTHENTICATION & ROLES
+============================================================
+- Create a `profiles` table: id (uuid, references auth.users), full_name, role (enum: admin, kitchen, waiter, customer), created_at. A trigger on auth.users INSERT auto-creates a matching profiles row with default role "customer".
+- Build middleware.ts protecting /admin, /kitchen, /waiter (and /account) — unauthenticated users redirect to /login; a logged-in user whose profiles.role doesn't match the section redirects to their own correct dashboard with a friendly message instead of a raw 403/error page.
+- Admin can create staff accounts: an "Add Staff" screen in /admin (email + temp password + role: kitchen or waiter) that calls a server action / Supabase Edge Function using the Supabase service role key (SUPABASE_SERVICE_ROLE_KEY — server-only secret, NEVER exposed to the browser, never given a NEXT_PUBLIC_ prefix) to create the auth user and set profiles.role.
+
+============================================================
+DATABASE SCHEMA — write as supabase/schema.sql, and this must be the FIRST file written
+============================================================
+1. profiles: id (uuid, FK to auth.users), full_name, role (enum: admin, kitchen, waiter, customer), created_at
+2. restaurant_tables: id, table_number (unique int), qr_slug
+3. menu_categories: id, name, sort_order
+4. menu_items: id, category_id (FK), name, description, price, is_veg (boolean), is_available (boolean)
+5. orders: id, table_number, customer_id (uuid, nullable FK to profiles), status (enum: placed, preparing, ready, served, completed, cancelled), estimated_minutes, accepted_at, notes, created_at, updated_at
+6. order_items: id, order_id (FK), item_name, item_price, quantity, special_instructions, is_veg
+7. waiter_calls: id, table_number, type (enum: waiter, water, bill), status (enum: pending, claimed, resolved), claimed_by (uuid FK to profiles), created_at, claimed_at, resolved_at
+8. waiters: id (uuid, FK to profiles), status (enum: free, busy, offline), updated_at
+
+Add all relevant tables to the supabase_realtime publication. Write RLS policies scoped by role via auth.uid() and a helper function that reads the caller's role from profiles:
+- only role="admin" writes menu_items/menu_categories/restaurant_tables
+- only role="kitchen"/"admin" updates orders.status
+- only role="waiter"/"admin" updates waiter_calls/waiters
+- anon (guest, no login) can still INSERT into orders/order_items/waiter_calls for guest ordering, and SELECT their own order by id — this is what makes the no-login customer flow work
+Comment each policy's intent clearly. Seed 12 demo restaurant_tables and ~12 placeholder menu_items across Starters, Main Course, Breads/Rice, Drinks, Desserts — use an emoji glyph field per item (rendered on a gradient card background) instead of external image URLs, so there are no broken images and no network dependency.
+
+============================================================
+DESIGN DIRECTION
+============================================================
+Mobile-first, premium, original — NOT a generic dashboard template, no lorem ipsum, no browser alert()/confirm() popups (build real modals/toasts/drawers instead). The customer app at "/" is the app's primary first impression, so it must be the most polished: warm "printed menu" aesthetic, paper-texture background, serif display font for headings, warm palette (chili red #E8502C, saffron #F0A202, herb green #3F7D58, warm paper #FBF7F0). Kitchen Display: dark theme styled like literal kitchen order tickets with a perforated top edge on each order card and a monospace font for order numbers/timers. Admin and Waiter dashboards should each have their own clearly distinct visual identity, separate from the customer app's warm look.
+
+============================================================
+BUILD THESE VIEWS, IN THIS ORDER
+============================================================
+
+1) "/" — THE CUSTOMER APP (default homepage, no login required)
+   - Reads ?table= from the URL (defaults to table 1 / "Demo Mode" badge if absent).
+   - Small "Sign in" link (top-right) and small "Staff Login" link (footer) — both minor, never large buttons.
+   - Categorized menu with sticky horizontal category tabs, veg/non-veg dot indicator, price, add/remove quantity stepper per item.
+   - Cart as a bottom-sheet drawer: per-item special instructions text field (e.g. "Less spicy"), running total, "Place Order" button — inserts into orders + order_items, fully functional with zero login.
+   - Live Order Tracker: Realtime-subscribed 3-step progress bar (Placed → Preparing → Ready), with a live mm:ss countdown once the kitchen accepts and sets a prep time.
+   - Floating quick-service button expanding into "Call Waiter" / "Water" / "Bill" — each inserts into waiter_calls and shows live status ("notified" → "waiter is on the way" once claimed), all via Realtime.
+   - If the customer signs in, replace the "Sign in" link with a small "My Orders" history link.
+
+2) /login — shared login/signup form
+   - Primary flow: staff login (email + password).
+   - Secondary, clearly optional flow: customer sign in / create account (always role="customer").
+   - Redirect logic exactly as described in the CRITICAL ROUTING BEHAVIOR section above.
+
+3) /kitchen (role: kitchen, admin) — Kitchen Display System
+   - Dark dashboard, 3 columns: New / Preparing / Ready.
+   - Realtime subscribed to INSERT on orders/order_items and UPDATE on orders — instant updates, zero refresh.
+   - Order tickets: perforated top-edge card styling, items with quantity + special instructions, live elapsed timer.
+   - "Accept & Set Time" button opens a modal for entering estimated prep minutes → sets status=preparing, accepted_at=now(), estimated_minutes.
+   - "Mark Ready" and "Served/Complete" buttons.
+   - "Start Shift" button that creates/resumes a Web Audio API AudioContext (unlocks audio from a real user gesture — do NOT use an mp3 file). Every new order arriving via the Realtime INSERT subscription must trigger a loud, continuously looping notification sound built purely with oscillator + gain nodes (a repeating multi-tone chime, ~1 second interval, similar to a food-delivery app ringtone). Track ringing orders in a set; the alarm for a given order loops until that order's "Accept & Set Time" is confirmed; the sound fully stops only once every ringing order has been acknowledged. Implement as lib/kitchenAlarm.ts with arm(), ring(orderId), and acknowledge(orderId) methods.
+
+4) /waiter (role: waiter, admin) — mobile UI for floor staff
+   - Large Free (green) / Busy (red) toggle tied to the logged-in waiter's own waiters row.
+   - Live pending waiter_calls list via Realtime, shown to free waiters.
+   - "Accept" claims a call via a conditional UPDATE (`.eq('id', callId).eq('status', 'pending')`) so only the first click wins; the losing waiter's ping disappears automatically once their Realtime subscription confirms someone else claimed it.
+   - On successful claim: that waiter's own status flips to Busy, the task appears in "My Tasks", and the customer sees "Waiter is on the way" live.
+   - "Resolved" button on a claimed task sets it resolved and flips the waiter back to Free.
+
+5) /admin (role: admin) — management dashboard (do not skip this — it must exist and be reachable via /login)
+   - Overview: live counts of active orders, pending calls, free/busy waiters.
+   - Menu management: full CRUD for menu_categories and menu_items (name, price, veg/non-veg, availability toggle).
+   - Table management: full CRUD for restaurant_tables, plus a screen to view/print each table's QR code (encoding a URL like https://yourapp.com/?table=N — generate client-side with a QR code library).
+   - Staff management: "Add Staff" form (creates kitchen/waiter accounts as described in the Auth section), and a list of all staff with their current live status.
+   - Orders log: a searchable/filterable table of all past orders.
+
+============================================================
+ADDITIONAL REQUIREMENTS
+============================================================
+- All state management and Realtime subscription logic must be fully implemented end-to-end — not mockups. Only the menu's seed content is placeholder data.
+- Clean file structure: app/page.tsx = customer app (the "/" route), app/login, app/admin, app/kitchen, app/waiter; components/customer/, components/kitchen/, components/waiter/, components/admin/, components/auth/; lib/ for Supabase browser + server clients, types, utils, kitchen alarm, and middleware helpers.
+- `npm run build` must complete with zero errors before considering the task done.
+- Write a README.md covering: how to run supabase/schema.sql in the Supabase SQL editor, where to get the Supabase URL/anon key/service role key, HOW TO CREATE THE FIRST ADMIN ACCOUNT (since signup never grants admin by default — this needs a one-time manual SQL update after signing up once, e.g. `update profiles set role='admin' where id = '<your-user-id>'`), and how to deploy to Vercel including all required environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY as public variables, and SUPABASE_SERVICE_ROLE_KEY as a server-only secret.
+
+Start by writing supabase/schema.sql (including profiles, the role enum, and RLS policies), then the Supabase browser/server clients and middleware.ts, then app/page.tsx as the customer app, then /login, then /kitchen, /waiter, /admin in that order, then the README. Do not build any card-based role-picker landing page — "/" is the customer menu, full stop.
